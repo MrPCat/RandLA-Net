@@ -4,7 +4,7 @@ from tester_Semantic3D import ModelTester
 from helper_ply import read_ply
 from helper_tool import Plot
 from helper_tool import DataProcessing as DP
-from helper_tool import ConfigSemantic3D as cfg
+from helper_tool import ConfigDales as cfg
 import tensorflow as tf
 import numpy as np
 import pickle, argparse, os
@@ -112,9 +112,12 @@ class Semantic3D:
             kd_tree_file = join(tree_path, '{:s}_KDTree.pkl'.format(cloud_name))
             sub_ply_file = join(tree_path, '{:s}.ply'.format(cloud_name))
 
-            # read ply with data
+            # Read ply with data
             data = read_ply(sub_ply_file)
-            sub_colors = np.vstack((data['red'], data['green'], data['blue'])).T
+            # Here, we only use x, y, z, and intensity (no RGB)
+            sub_points = np.vstack((data['x'], data['y'], data['z'])).T
+            sub_intensity = data['intensity']  # Intensity as features
+            
             if cloud_split == 'test':
                 sub_labels = None
             else:
@@ -125,7 +128,7 @@ class Semantic3D:
                 search_tree = pickle.load(f)
 
             self.input_trees[cloud_split] += [search_tree]
-            self.input_colors[cloud_split] += [sub_colors]
+            self.input_colors[cloud_split] += [sub_intensity]  # Using intensity as features
             if cloud_split in ['training', 'validation']:
                 self.input_labels[cloud_split] += [sub_labels]
 
@@ -133,7 +136,6 @@ class Semantic3D:
         print('\nPreparing reprojection indices for validation and test')
 
         for i, file_path in enumerate(files):
-
             # get cloud name and split
             cloud_name = file_path.split('/')[-1][:-4]
 
@@ -154,6 +156,7 @@ class Semantic3D:
                 self.test_labels += [labels]
         print('finished')
         return
+
 
     # Generate the input data flow
     def get_batch_gen(self, split):
@@ -179,7 +182,6 @@ class Semantic3D:
             self.class_weight[split] += [np.squeeze([num_class_total / np.sum(num_class_total)], axis=0)]
 
         def spatially_regular_gen():
-
             # Generator loop
             for i in range(num_per_epoch):  # num_per_epoch
 
@@ -203,10 +205,11 @@ class Semantic3D:
                 # Shuffle index
                 query_idx = DP.shuffle_idx(query_idx)
 
-                # Get corresponding points and colors based on the index
+                # Get corresponding points and features based on the index
                 queried_pc_xyz = points[query_idx]
                 queried_pc_xyz[:, 0:2] = queried_pc_xyz[:, 0:2] - pick_point[:, 0:2]
-                queried_pc_colors = self.input_colors[split][cloud_idx][query_idx]
+                queried_pc_features = self.input_colors[split][cloud_idx][query_idx]  # Intensity as features
+
                 if split == 'test':
                     queried_pc_labels = np.zeros(queried_pc_xyz.shape[0])
                     queried_pt_weight = 1
@@ -221,12 +224,12 @@ class Semantic3D:
                 self.possibility[split][cloud_idx][query_idx] += delta
                 self.min_possibility[split][cloud_idx] = float(np.min(self.possibility[split][cloud_idx]))
 
-                if True:
-                    yield (queried_pc_xyz,
-                           queried_pc_colors.astype(np.float32),
-                           queried_pc_labels,
-                           query_idx.astype(np.int32),
-                           np.array([cloud_idx], dtype=np.int32))
+                yield (queried_pc_xyz,
+                    queried_pc_features.astype(np.float32),
+                    queried_pc_labels,
+                    query_idx.astype(np.int32),
+                    np.array([cloud_idx], dtype=np.int32))
+
 
         gen_func = spatially_regular_gen
         gen_types = (tf.float32, tf.float32, tf.int32, tf.int32, tf.int32)
@@ -263,8 +266,10 @@ class Semantic3D:
     # data augmentation
     @staticmethod
     def tf_augment_input(inputs):
-        xyz = inputs[0]
-        features = inputs[1]
+        xyz = inputs[0]  # (x, y, z)
+        intensity = inputs[1]  # intensity as features
+
+        # Perform augmentations on xyz and intensity
         theta = tf.random_uniform((1,), minval=0, maxval=2 * np.pi)
         # Rotation matrices
         c, s = tf.cos(theta), tf.sin(theta)
@@ -275,6 +280,7 @@ class Semantic3D:
 
         # Apply rotations
         transformed_xyz = tf.reshape(tf.matmul(xyz, stacked_rots), [-1, 3])
+
         # Choose random scales for each example
         min_s = cfg.augment_scale_min
         max_s = cfg.augment_scale_max
@@ -297,11 +303,14 @@ class Semantic3D:
         # Apply scales
         transformed_xyz = transformed_xyz * stacked_scales
 
+        # Add noise
         noise = tf.random_normal(tf.shape(transformed_xyz), stddev=cfg.augment_noise)
         transformed_xyz = transformed_xyz + noise
-        rgb = features[:, :3]
-        stacked_features = tf.concat([transformed_xyz, rgb], axis=-1)
+
+        # Use intensity as feature
+        stacked_features = tf.concat([transformed_xyz, intensity[:, None]], axis=-1)
         return stacked_features
+
 
     def init_input_pipeline(self):
         print('Initiating input pipelines')

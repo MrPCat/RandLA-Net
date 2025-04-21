@@ -40,11 +40,10 @@ class ModelTester:
         self.log_out = open('log_test_' + dataset.name + '.txt', 'a')
 
     def test(self, model, dataset, num_votes=100):
-
-        # Smoothing parameter for votes
+    # Smoothing parameter for votes
         test_smooth = 0.98
 
-        # Initialise iterator with train data
+        # Initialise iterator with test data
         self.sess.run(dataset.test_init_op)
 
         # Test saving path
@@ -63,16 +62,15 @@ class ModelTester:
         last_min = -0.5
 
         while last_min < num_votes:
-
             try:
                 ops = (self.prob_logits,
-                       model.labels,
-                       model.inputs['input_inds'],
-                       model.inputs['cloud_inds'],)
+                    model.labels,
+                    model.inputs['input_inds'],
+                    model.inputs['cloud_inds'],)
 
                 stacked_probs, stacked_labels, point_idx, cloud_idx = self.sess.run(ops, {model.is_training: False})
                 stacked_probs = np.reshape(stacked_probs, [model.config.val_batch_size, model.config.num_points,
-                                                           model.config.num_classes])
+                                                        model.config.num_classes])
 
                 for j in range(np.shape(stacked_probs)[0]):
                     probs = stacked_probs[j, :, :]
@@ -84,13 +82,11 @@ class ModelTester:
                     dataset.min_possibility['test'])), self.log_out)
 
             except tf.errors.OutOfRangeError:
-
                 # Save predicted cloud
                 new_min = np.min(dataset.min_possibility['test'])
                 log_string('Epoch {:3d}, end. Min possibility = {:.1f}'.format(epoch_id, new_min), self.log_out)
 
                 if last_min + 4 < new_min:
-
                     print('Saving clouds')
 
                     # Update last_min
@@ -127,7 +123,7 @@ class ModelTester:
                         # Save ascii preds
                         ascii_name = join(test_path, 'predictions', dataset.ascii_files[cloud_name])
                         np.savetxt(ascii_name, preds, fmt='%d')
-                        log_string(ascii_name + 'has saved', self.log_out)
+                        log_string(ascii_name + ' has saved', self.log_out)
                         i_test += 1
 
                     t2 = time.time()
@@ -141,7 +137,11 @@ class ModelTester:
                 continue
         return
 
+
     @staticmethod
     def load_evaluation_points(file_path):
+        # Assuming the ply file contains the fields 'x', 'y', 'z', and 'intensity'
         data = read_ply(file_path)
-        return np.vstack((data['x'], data['y'], data['z'])).T
+        # Only return the spatial coordinates and intensity (if needed)
+        return np.vstack((data['x'], data['y'], data['z'], data['intensity'])).T
+
