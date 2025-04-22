@@ -15,14 +15,14 @@ class Dales:
         self.name = 'Dales'
         self.path = '/data/dales'  # Update with correct path to Dales dataset
         self.label_to_names = {
-        1: 'Ground',
-        2: 'Vegetation',
-        3: 'Cars',
-        4: 'Trucks',
-        5: 'Power lines',
-        6: 'Poles',
-        7: 'Fences'
-        }
+            1: 'Ground',
+            2: 'Vegetation',
+            3: 'Cars',
+            4: 'Trucks',
+            5: 'Power lines',
+            6: 'Poles',
+            7: 'Fences',
+            8: 'Buildings'}
         self.num_classes = len(self.label_to_names)  # Number of classes
         self.label_values = np.sort([k for k, v in self.label_to_names.items()])
         self.label_to_idx = {l: i for i, l in enumerate(self.label_values)}

@@ -298,14 +298,15 @@ class DataProcessing:
         elif dataset_name == 'SemanticKITTI':
             num_per_class = np.array([55437630, 320797, 541736, 2578735, 3274484, 552662, 184064, 78858,
                                     240942562, 17294618, 170599734, 6369672, 230413074, 101130274, 476491114,
-                                    9833174, 129609852, 4506626, 1168181])
+                                    9833174, 129609852, 4506626, 1168181], dtype=np.int32)
         elif dataset_name == 'DALES':
-            # DALES class counts you provided
-            num_per_class = np.array([0, 104967287, 71308488, 1288806, 587638, 573361, 742902, 144580], dtype=np.int32)
+            num_per_class = np.array([104967287, 71308488, 1288806, 587638, 573361, 742902,
+                                    144580, 34691665], dtype=np.int32)
 
         weight = num_per_class / float(sum(num_per_class))
         ce_label_weight = 1 / (weight + 0.02)
         return np.expand_dims(ce_label_weight, axis=0)
+
 
 
 
