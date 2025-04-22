@@ -1,9 +1,8 @@
-from open3d import linux as open3d
+import open3d as o3d
 from os.path import join
 import numpy as np
 import colorsys, random, os, sys
 import pandas as pd
-import open3d
 
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -338,10 +337,10 @@ class Plot:
         Draw point cloud with XYZ coordinates only. 
         Assumes no RGB values are provided.
         """
-        pc = open3d.geometry.PointCloud()
-        pc.points = open3d.utility.Vector3dVector(pc_xyz)
+        pc = o3d.geometry.PointCloud()
+        pc.points = o3d.utility.Vector3dVector(pc_xyz)
 
-        open3d.visualization.draw_geometries([pc])
+        o3d.visualization.draw_geometries([pc])
         return 0
 
     @staticmethod
