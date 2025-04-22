@@ -10,23 +10,25 @@ import numpy as np
 import pickle, argparse, os
 
 
-class Semantic3D:
+class Dales:
     def __init__(self):
-        self.name = 'Semantic3D'
-        self.path = '/data/semantic3d'
-        self.label_to_names = {0: 'unlabeled',
-                               1: 'man-made terrain',
-                               2: 'natural terrain',
-                               3: 'high vegetation',
-                               4: 'low vegetation',
-                               5: 'buildings',
-                               6: 'hard scape',
-                               7: 'scanning artefacts',
-                               8: 'cars'}
-        self.num_classes = len(self.label_to_names)
+        self.name = 'Dales'
+        self.path = '/data/dales'  # Update with correct path to Dales dataset
+        self.label_to_names = {
+        1: 'Ground',
+        2: 'Vegetation',
+        3: 'Cars',
+        4: 'Trucks',
+        5: 'Power lines',
+        6: 'Poles',
+        7: 'Fences'
+        }
+        self.num_classes = len(self.label_to_names)  # Number of classes
         self.label_values = np.sort([k for k, v in self.label_to_names.items()])
         self.label_to_idx = {l: i for i, l in enumerate(self.label_values)}
-        self.ignored_labels = np.sort([0])
+        self.ignored_labels = np.sort([0])  # Set 'unlabeled' as ignored
+        # Further dataset setup here...
+
 
         self.original_folder = join(self.path, 'original_data')
         self.full_pc_folder = join(self.path, 'original_ply')
@@ -94,7 +96,6 @@ class Semantic3D:
         self.load_sub_sampled_clouds(cfg.sub_grid_size)
 
     def load_sub_sampled_clouds(self, sub_grid_size):
-
         tree_path = join(self.path, 'input_{:.3f}'.format(sub_grid_size))
         files = np.hstack((self.train_files, self.val_files, self.test_files))
 
@@ -156,7 +157,6 @@ class Semantic3D:
                 self.test_labels += [labels]
         print('finished')
         return
-
 
     # Generate the input data flow
     def get_batch_gen(self, split):
@@ -312,6 +312,7 @@ class Semantic3D:
         return stacked_features
 
 
+
     def init_input_pipeline(self):
         print('Initiating input pipelines')
         cfg.ignored_label_inds = [self.label_to_idx[ign_label] for ign_label in self.ignored_labels]
@@ -355,7 +356,7 @@ if __name__ == '__main__':
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
     Mode = FLAGS.mode
-    dataset = Semantic3D()
+    dataset = Dales()
     dataset.init_input_pipeline()
 
     if Mode == 'train':
