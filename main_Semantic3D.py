@@ -13,7 +13,19 @@ import pickle, argparse, os
 class Dales:
     def __init__(self):
         self.name = 'Dales'
-        self.path = '/data/dales'  # Update with correct path to Dales dataset
+        
+        # Define paths to your pre-split data folders - update these with your actual paths
+        self.path = '/data/dales'  # Base path
+        self.train_data_path = join(self.path, 'train')
+        self.val_data_path = join(self.path, 'validation')
+        self.test_data_path = join(self.path, 'test')
+        
+        # Make sure these folders exist
+        os.makedirs(self.train_data_path, exist_ok=True)
+        os.makedirs(self.val_data_path, exist_ok=True)
+        os.makedirs(self.test_data_path, exist_ok=True)
+        
+        # Make sure the label mappings match your Dales dataset
         self.label_to_names = {
             1: 'Ground',
             2: 'Vegetation',
@@ -22,41 +34,46 @@ class Dales:
             5: 'Power lines',
             6: 'Poles',
             7: 'Fences',
-            8: 'Buildings'}
-        self.num_classes = len(self.label_to_names)  # Number of classes
+            8: 'Buildings'
+        }
+        self.num_classes = len(self.label_to_names)
         self.label_values = np.sort([k for k, v in self.label_to_names.items()])
         self.label_to_idx = {l: i for i, l in enumerate(self.label_values)}
         self.ignored_labels = np.sort([0])  # Set 'unlabeled' as ignored
-        # Further dataset setup here...
 
+        # Create directories for processed data
+        self.sub_pc_folder = join(self.path, f'input_{cfg.sub_grid_size:.3f}')
+        os.makedirs(self.sub_pc_folder, exist_ok=True)
 
+        # Keep these for compatibility with the rest of the code
         self.original_folder = join(self.path, 'original_data')
         self.full_pc_folder = join(self.path, 'original_ply')
         self.sub_pc_folder = join(self.path, 'input_{:.3f}'.format(cfg.sub_grid_size))
 
-        # Following KPConv to do the train-validation split
-        self.all_splits = [0, 1, 4, 5, 3, 4, 3, 0, 1, 2, 3, 4, 2, 0, 5]
-        self.val_split = 1
-
-        # Initial training-validation-testing files
+        # Initialize empty file lists
         self.train_files = []
         self.val_files = []
         self.test_files = []
-        cloud_names = [file_name[:-4] for file_name in os.listdir(self.original_folder) if file_name[-4:] == '.txt']
-        for pc_name in cloud_names:
-            if exists(join(self.original_folder, pc_name + '.labels')):
-                self.train_files.append(join(self.sub_pc_folder, pc_name + '.ply'))
-            else:
-                self.test_files.append(join(self.full_pc_folder, pc_name + '.ply'))
-
+        
+        # Collect training files
+        for file_name in os.listdir(self.train_data_path):
+            if file_name.endswith('.ply'):
+                self.train_files.append(join(self.train_data_path, file_name))
+        
+        # Collect validation files
+        for file_name in os.listdir(self.val_data_path):
+            if file_name.endswith('.ply'):
+                self.val_files.append(join(self.val_data_path, file_name))
+        
+        # Collect test files
+        for file_name in os.listdir(self.test_data_path):
+            if file_name.endswith('.ply'):
+                self.test_files.append(join(self.test_data_path, file_name))
+        
+        # Sort the file lists
         self.train_files = np.sort(self.train_files)
+        self.val_files = np.sort(self.val_files)
         self.test_files = np.sort(self.test_files)
-
-        for i, file_path in enumerate(self.train_files):
-            if self.all_splits[i] == self.val_split:
-                self.val_files.append(file_path)
-
-        self.train_files = np.sort([x for x in self.train_files if x not in self.val_files])
 
         # Initiate containers
         self.val_proj = []
@@ -93,68 +110,123 @@ class Dales:
             'stgallencathedral_station3_intensity_rgb.ply': 'stgallencathedral3.labels',
             'stgallencathedral_station6_intensity_rgb.ply': 'stgallencathedral6.labels'}
 
-        self.load_sub_sampled_clouds(cfg.sub_grid_size)
+        self.load_sub_sampled_clouds(cfg.sub_grid_size)                         
 
     def load_sub_sampled_clouds(self, sub_grid_size):
-        tree_path = join(self.path, 'input_{:.3f}'.format(sub_grid_size))
         files = np.hstack((self.train_files, self.val_files, self.test_files))
 
         for i, file_path in enumerate(files):
             cloud_name = file_path.split('/')[-1][:-4]
             print('Load_pc_' + str(i) + ': ' + cloud_name)
+            
+            # Determine which split this file belongs to
             if file_path in self.val_files:
                 cloud_split = 'validation'
+                # Get directory for this split
+                split_dir = self.val_data_path
             elif file_path in self.train_files:
                 cloud_split = 'training'
+                split_dir = self.train_data_path
             else:
                 cloud_split = 'test'
+                split_dir = self.test_data_path
 
-            # Name of the input files
-            kd_tree_file = join(tree_path, '{:s}_KDTree.pkl'.format(cloud_name))
-            sub_ply_file = join(tree_path, '{:s}.ply'.format(cloud_name))
+            # Update paths to look in the appropriate split directory
+            kd_tree_file = join(split_dir, '{:s}_KDTree.pkl'.format(cloud_name))
+            
+            # Use the actual PLY file path directly
+            sub_ply_file = file_path
 
             # Read ply with data
             data = read_ply(sub_ply_file)
             # Here, we only use x, y, z, and intensity (no RGB)
             sub_points = np.vstack((data['x'], data['y'], data['z'])).T
-            sub_intensity = data['intensity']  # Intensity as features
+            
+            # Check if 'intensity' field exists, otherwise use a default value
+            if 'intensity' in data.dtype.names:
+                sub_intensity = data['intensity']
+            else:
+                print(f"Warning: 'intensity' not found in {sub_ply_file}, using default values")
+                sub_intensity = np.ones(len(data))
             
             if cloud_split == 'test':
                 sub_labels = None
             else:
-                sub_labels = data['class']
+                # Check if 'class' field exists
+                if 'class' in data.dtype.names:
+                    sub_labels = data['class']
+                else:
+                    print(f"Warning: 'class' not found in {sub_ply_file}")
+                    sub_labels = np.zeros(len(data))
 
-            # Read pkl with search tree
-            with open(kd_tree_file, 'rb') as f:
-                search_tree = pickle.load(f)
+            # Read pkl with search tree or create one if it doesn't exist
+            if exists(kd_tree_file):
+                with open(kd_tree_file, 'rb') as f:
+                    search_tree = pickle.load(f)
+            else:
+                print(f"KDTree file not found: {kd_tree_file}, creating new one")
+                search_tree = DP.build_kdtree(sub_points)
+                # Optionally save the tree for future use
+                with open(kd_tree_file, 'wb') as f:
+                    pickle.dump(search_tree, f)
 
             self.input_trees[cloud_split] += [search_tree]
-            self.input_colors[cloud_split] += [sub_intensity]  # Using intensity as features
+            self.input_colors[cloud_split] += [sub_intensity]
             if cloud_split in ['training', 'validation']:
                 self.input_labels[cloud_split] += [sub_labels]
 
-        # Get validation and test re_projection indices
+        # Modified projection handling for validation and test sets
         print('\nPreparing reprojection indices for validation and test')
 
         for i, file_path in enumerate(files):
-            # get cloud name and split
             cloud_name = file_path.split('/')[-1][:-4]
-
-            # Validation projection and labels
+            
+            # Determine directory based on which split this file belongs to
             if file_path in self.val_files:
-                proj_file = join(tree_path, '{:s}_proj.pkl'.format(cloud_name))
-                with open(proj_file, 'rb') as f:
-                    proj_idx, labels = pickle.load(f)
+                split_dir = self.val_data_path
+                proj_file = join(split_dir, '{:s}_proj.pkl'.format(cloud_name))
+                
+                # Check if projection file exists, create one if not
+                if exists(proj_file):
+                    with open(proj_file, 'rb') as f:
+                        proj_idx, labels = pickle.load(f)
+                else:
+                    print(f"Projection file not found: {proj_file}, creating default projection")
+                    # Create a simple identity projection (or implement your own logic)
+                    data = read_ply(file_path)
+                    if 'class' in data.dtype.names:
+                        labels = data['class']
+                    else:
+                        labels = np.zeros(len(data))
+                    proj_idx = np.arange(len(data))
+                    # Save for future use
+                    with open(proj_file, 'wb') as f:
+                        pickle.dump((proj_idx, labels), f)
+                        
                 self.val_proj += [proj_idx]
                 self.val_labels += [labels]
 
             # Test projection
-            if file_path in self.test_files:
-                proj_file = join(tree_path, '{:s}_proj.pkl'.format(cloud_name))
-                with open(proj_file, 'rb') as f:
-                    proj_idx, labels = pickle.load(f)
+            elif file_path in self.test_files:
+                split_dir = self.test_data_path
+                proj_file = join(split_dir, '{:s}_proj.pkl'.format(cloud_name))
+                
+                # Similar handling for test files
+                if exists(proj_file):
+                    with open(proj_file, 'rb') as f:
+                        proj_idx, labels = pickle.load(f)
+                else:
+                    print(f"Projection file not found: {proj_file}, creating default projection")
+                    data = read_ply(file_path)
+                    # For test data, we might not have labels
+                    labels = np.zeros(len(data))
+                    proj_idx = np.arange(len(data))
+                    with open(proj_file, 'wb') as f:
+                        pickle.dump((proj_idx, labels), f)
+                        
                 self.test_proj += [proj_idx]
                 self.test_labels += [labels]
+        
         print('finished')
         return
 
@@ -267,28 +339,28 @@ class Dales:
     @staticmethod
     def tf_augment_input(inputs):
         xyz = inputs[0]  # (x, y, z)
-        intensity = inputs[1]  # intensity as features
-
-        # Perform augmentations on xyz and intensity
+        features = inputs[1]  # features (including intensity)
+        
+        # Randomly rotate around z-axis (vertical axis for aerial data)
         theta = tf.random_uniform((1,), minval=0, maxval=2 * np.pi)
-        # Rotation matrices
         c, s = tf.cos(theta), tf.sin(theta)
         cs0 = tf.zeros_like(c)
         cs1 = tf.ones_like(c)
+        
+        # Only rotate around z-axis for aerial data
         R = tf.stack([c, -s, cs0, s, c, cs0, cs0, cs0, cs1], axis=1)
         stacked_rots = tf.reshape(R, (3, 3))
-
-        # Apply rotations
         transformed_xyz = tf.reshape(tf.matmul(xyz, stacked_rots), [-1, 3])
-
-        # Choose random scales for each example
+        
+        # Scale augmentation - adjust min/max based on your dataset
         min_s = cfg.augment_scale_min
         max_s = cfg.augment_scale_max
         if cfg.augment_scale_anisotropic:
             s = tf.random_uniform((1, 3), minval=min_s, maxval=max_s)
         else:
             s = tf.random_uniform((1, 1), minval=min_s, maxval=max_s)
-
+        
+        # Apply symmetries if configured
         symmetries = []
         for i in range(3):
             if cfg.augment_symmetries[i]:
@@ -296,20 +368,25 @@ class Dales:
             else:
                 symmetries.append(tf.ones([1, 1], dtype=tf.float32))
         s *= tf.concat(symmetries, 1)
-
-        # Create N x 3 vector of scales to multiply with stacked_points
-        stacked_scales = tf.tile(s, [tf.shape(transformed_xyz)[0], 1])
-
+        
         # Apply scales
+        stacked_scales = tf.tile(s, [tf.shape(transformed_xyz)[0], 1])
         transformed_xyz = transformed_xyz * stacked_scales
-
-        # Add noise
-        noise = tf.random_normal(tf.shape(transformed_xyz), stddev=cfg.augment_noise)
-        transformed_xyz = transformed_xyz + noise
-
-        # Use intensity as feature
-        stacked_features = tf.concat([transformed_xyz, intensity[:, None]], axis=-1)
-        return stacked_features
+        
+        # Add random noise
+        if cfg.augment_noise > 0:
+            noise = tf.random_normal(tf.shape(transformed_xyz), stddev=cfg.augment_noise)
+            transformed_xyz = transformed_xyz + noise
+        
+        # Combine transformed coordinates with features
+        if tf.shape(features)[1] > 1:
+            # If there are multiple features
+            transformed_features = tf.concat([transformed_xyz, features[:, 1:]], axis=1)
+        else:
+            # If only one feature (intensity)
+            transformed_features = tf.concat([transformed_xyz, features], axis=1)
+        
+        return transformed_features
 
 
 
