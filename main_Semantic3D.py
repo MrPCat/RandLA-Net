@@ -15,10 +15,10 @@ class Dales:
         self.name = 'Dales'
         
         # Define paths to your pre-split data folders - update these with your actual paths
-        self.path = '/data/dales'  # Base path
-        self.train_data_path = join(self.path, 'train')
-        self.val_data_path = join(self.path, 'validation')
-        self.test_data_path = join(self.path, 'test')
+        self.path = '/content/drive/MyDrive/Dales_PLY_Format'  # Base path
+        self.train_data_path = join(self.path, 'Train')
+        self.val_data_path = join(self.path, 'Valid')
+        self.test_data_path = join(self.path, 'Test')
         
         # Make sure these folders exist
         os.makedirs(self.train_data_path, exist_ok=True)
